@@ -1,6 +1,35 @@
-USERNAME = "Your username"
-PASSWORD = "Your password"
-PROJECTID = "Your project ID"
+import sys
+import warnings
+
+USERNAME = ""
+PASSWORD = ""
+SESSION_ID = ""  # paste a valid Scratch session ID here if username/password login is blocked
+PROJECTID = "1397373531"
+
+
+def create_session():
+    import scratchattach as scratch3
+    from scratchattach.utils import exceptions as scratch_exceptions
+
+    warnings.filterwarnings("ignore", category=scratch3.LoginDataWarning)
+
+    if SESSION_ID:
+        print("Using Scratch session ID.")
+        return scratch3.login_by_id(SESSION_ID, username=USERNAME, password=PASSWORD)
+
+    if USERNAME and PASSWORD:
+        print("Using Scratch username/password.")
+        try:
+            return scratch3.login(USERNAME, PASSWORD)
+        except scratch_exceptions.LoginFailure as exc:
+            raise RuntimeError(
+                "Scratch rejected the username/password login from this environment. "
+                "Set SESSION_ID to a valid Scratch session ID from your browser, or run this from a network that Scratch accepts."
+            ) from exc
+
+    raise RuntimeError(
+        "No Scratch login data configured. Set SESSION_ID or USERNAME + PASSWORD before running the script."
+    )
 
 #Pasted from https://github.com/PolyPenguinDev/GPTSimple
 import requests
@@ -111,81 +140,94 @@ from scratchattach import Encoding
 import threading
 import time
 import random
+
 sessions = []
 chats = {}
+
+
 def makesession():
     s = random.randrange(11111, 99999)
     if s in sessions:
         return makesession()
     else:
         return s
-# Login and connect
-session = scratch3.login(USERNAME, PASSWORD)
-conn = session.connect_cloud(PROJECTID)
-
-def get_channel(c):
-    return scratch3.get_var(PROJECTID, "channel " + str(c))
-
-def set_channel(c, v):
-    if v!= "":
-        conn.set_var("channel " + str(c), int(v))
-
-def channel(c):
-    while True:
-        try:
-            time.sleep(0.2)
-            content = get_channel(c)
-            if str(content) != "0" and content is not None:
-                if str(content).startswith("00000"):
-                    print("new user logged in SYSTEM: "+Encoding.decode(int(str(content)[5:]))+"\n")
-                    s = makesession()
-                    sessions.append(s)
-                    set_channel(c, s)
-                    chat = conversation(base_url="deepinfra", model="meta-llama/Meta-Llama-3-70B-Instruct", system_prompt=Encoding.decode(int(str(content)[5:])))
-                    chats[str(s)] = chat
-                else:
-                    
-                    chat = chats[str(content)[:5]]
-                    t = time.time()
-                    set_channel(c, "2")
-                    while get_channel(c) != "1":
-                        time.sleep(0.2)
-                        if time.time()-t > 1:
-                            t=time.time()
-                            set_channel(c, "2")
-                    print("User: "+Encoding.decode(int(str(content)[5:])),"\n\nAI: ",end="")
-                    answer = chat.ask(Encoding.decode(int(str(content)[5:])), stream=True)
-
-                    t = time.time()
-                    sins = ""
-                    for token in answer:
-                        if token.token != None:
-                            sins += token.token.replace("/", "//").replace("\n", "/n")
-                            if time.time() - t > 0.2:
-                                    set_channel(c, Encoding.encode(sins))
-                                    print(sins, end="", flush=True)
-                                    sins = ""
-                                    t=time.time()
-                    time.sleep(max(0, 0.2-(time.time()-t)))
-                    print(sins, end="", flush=True)
-                    set_channel(c, Encoding.encode(sins))
-                    print("\n")
-                    set_channel(c, "0")
-        except:
-            set_channel(c, Encoding.encode("... AN ERROR OCCURED, PLEASE RESTART THE PROJECT"))
-            time.sleep(0.2)
-            set_channel(c, 0)
 
 
-def start_channel(c):
-    thread = threading.Thread(target=channel, args=(c,))
-    thread.start()
-    return thread
-for i in range(10):
-    set_channel(i+1, 0)
-# Start multiple channels if needed
-threads = [start_channel(i+1) for i in range(10)]
-print("server started")
-# Keep the main thread alive to allow the threads to run
-for thread in threads:
-    thread.join()
+def main():
+    session = create_session()
+    conn = session.connect_cloud(PROJECTID)
+
+    def get_channel(c):
+        return scratch3.get_var(PROJECTID, "channel " + str(c))
+
+    def set_channel(c, v):
+        if v != "":
+            conn.set_var("channel " + str(c), int(v))
+
+    def channel(c):
+        while True:
+            try:
+                time.sleep(0.2)
+                content = get_channel(c)
+                if str(content) != "0" and content is not None:
+                    if str(content).startswith("00000"):
+                        print("new user logged in SYSTEM: "+Encoding.decode(int(str(content)[5:]))+"\n")
+                        s = makesession()
+                        sessions.append(s)
+                        set_channel(c, s)
+                        chat = conversation(base_url="deepinfra", model="meta-llama/Meta-Llama-3-70B-Instruct", system_prompt=Encoding.decode(int(str(content)[5:])))
+                        chats[str(s)] = chat
+                    else:
+                        chat = chats[str(content)[:5]]
+                        t = time.time()
+                        set_channel(c, "2")
+                        while get_channel(c) != "1":
+                            time.sleep(0.2)
+                            if time.time()-t > 1:
+                                t=time.time()
+                                set_channel(c, "2")
+                        print("User: "+Encoding.decode(int(str(content)[5:])),"\n\nAI: ",end="")
+                        answer = chat.ask(Encoding.decode(int(str(content)[5:])), stream=True)
+
+                        t = time.time()
+                        sins = ""
+                        for token in answer:
+                            if token.token != None:
+                                sins += token.token.replace("/", "//").replace("\n", "/n")
+                                if time.time() - t > 0.2:
+                                        set_channel(c, Encoding.encode(sins))
+                                        print(sins, end="", flush=True)
+                                        sins = ""
+                                        t=time.time()
+                        time.sleep(max(0, 0.2-(time.time()-t)))
+                        print(sins, end="", flush=True)
+                        set_channel(c, Encoding.encode(sins))
+                        print("\n")
+                        set_channel(c, "0")
+            except:
+                set_channel(c, Encoding.encode("... AN ERROR OCCURED, PLEASE RESTART THE PROJECT"))
+                time.sleep(0.2)
+                set_channel(c, 0)
+
+    def start_channel(c):
+        thread = threading.Thread(target=channel, args=(c,))
+        thread.start()
+        return thread
+
+    for i in range(10):
+        set_channel(i+1, 0)
+    threads = [start_channel(i+1) for i in range(10)]
+    print("server started")
+    for thread in threads:
+        thread.join()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except RuntimeError as exc:
+        print(f"Scratch login setup error: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+    except Exception as exc:
+        print(f"Unexpected error: {exc}", file=sys.stderr)
+        raise SystemExit(1)
